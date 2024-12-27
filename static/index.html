@@ -1,4 +1,4 @@
-<!-- index.html -->
+<!-- static/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -151,6 +151,13 @@
         width: 90%;
       }
     }
+
+    /* Additional Styles for Submitted Number */
+    #submittedNumber {
+      font-size: 1.2em;
+      color: #333;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -183,6 +190,7 @@
   <div id="waitingRoom" class="section">
     <h2>Waiting Room</h2>
     <p>Game ID: <strong id="displayGameID"></strong></p>
+    <p>You: <strong id="currentPlayerName"></strong></p> <!-- Display Current Player's Name -->
     <div class="playerList" id="waitingPlayers"></div>
     <p id="waitingMessage">Waiting for at least 3 players...</p>
     <button id="startGameNowBtn" style="background:#ff9800; display: none;">Start Game</button>
@@ -191,6 +199,7 @@
   <!-- Game Screen -->
   <div id="gameScreen" class="section">
     <h2>Game ID: <span id="gameIDSpan"></span></h2>
+    <p>You: <strong id="currentPlayerNameGame"></strong></p> <!-- Display Current Player's Name -->
     <h3>Players</h3>
     <div class="playerList" id="playerList"></div>
 
@@ -199,6 +208,7 @@
       <h3>Submit Your Number</h3>
       <input type="number" id="numberInput" min="0" placeholder="Enter a number" />
       <button id="submitNumberBtn">Submit</button>
+      <p id="submittedNumber" style="display: none;">You submitted: <span id="displayedNumber"></span></p> <!-- Display Submitted Number -->
     </div>
 
     <!-- Round Results -->
@@ -225,6 +235,7 @@
     let isHost = false;
     let gameOver = false;
     let socket = null;
+    let currentPlayerName = ""; // Store the current player's name
 
     // Section Elements
     const sections = {
@@ -265,6 +276,12 @@
     const resultsText = document.getElementById('resultsText');
     const winnerName = document.getElementById('winnerName');
 
+    // New Elements for UI Enhancements
+    const currentPlayerNameDisplay = document.getElementById('currentPlayerName');
+    const currentPlayerNameGameDisplay = document.getElementById('currentPlayerNameGame');
+    const submittedNumberDisplay = document.getElementById('submittedNumber');
+    const displayedNumberSpan = document.getElementById('displayedNumber'); // Span to display the number
+
     // Section Navigation Functions
     function showSection(section) {
       Object.values(sections).forEach(sec => sec.classList.remove('visible'));
@@ -299,6 +316,7 @@
         const data = await response.json();
         currentGameID = data.gameId;
         isHost = true;
+        currentPlayerName = hostName; // Store the player's name
 
         if (!currentGameID) {
           throw new Error('Invalid response from server.');
@@ -306,8 +324,10 @@
 
         // Update UI
         displayGameID.textContent = currentGameID;
+        currentPlayerNameDisplay.textContent = currentPlayerName;
+        currentPlayerNameGameDisplay.textContent = currentPlayerName;
         showSection(sections.waitingRoom);
-        connectWebSocket(hostName);
+        connectWebSocket();
       } catch (error) {
         console.error('Create Game Error:', error);
         alert(`Error: ${error.message}`);
@@ -327,8 +347,9 @@
       try {
         currentGameID = gameID;
         isHost = false;
+        currentPlayerName = playerName; // Store the player's name
         showSection(sections.waitingRoom);
-        connectWebSocket(playerName);
+        connectWebSocket();
       } catch (error) {
         console.error('Join Game Error:', error);
         alert(`Error: ${error.message}`);
@@ -336,12 +357,14 @@
     });
 
     // Connect to WebSocket
-    function connectWebSocket(playerName) {
-      socket = new WebSocket(`ws://${window.location.host}/ws/game/${currentGameID}`);
+    function connectWebSocket() {
+      // Determine the protocol based on the current page's protocol
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      socket = new WebSocket(`${protocol}://${window.location.host}/ws/game/${currentGameID}`);
 
       socket.onopen = () => {
         // Send join message
-        socket.send(JSON.stringify({ type: "join", name: playerName }));
+        socket.send(JSON.stringify({ type: "join", name: currentPlayerName }));
       };
 
       socket.onmessage = (event) => {
@@ -351,6 +374,7 @@
 
       socket.onclose = () => {
         console.log('WebSocket connection closed.');
+        alert('Connection closed.');
       };
 
       socket.onerror = (error) => {
@@ -370,6 +394,10 @@
       updatePlayerList(players, 'waitingPlayers', 'waiting');
       updatePlayerList(players, 'playerList', 'game');
 
+      // Update current player's name displays
+      currentPlayerNameDisplay.textContent = currentPlayerName;
+      currentPlayerNameGameDisplay.textContent = currentPlayerName;
+
       // Handle game states
       if (gameState === "waiting") {
         showSection(sections.waitingRoom);
@@ -383,12 +411,17 @@
         submitSection.style.display = 'block';
         roundResults.style.display = 'none';
         nextRoundBtn.style.display = 'none';
+        // Reset submitted number display
+        submittedNumberDisplay.style.display = 'none';
+        displayedNumberSpan.textContent = '';
       } else if (gameState === "roundEnd") {
         showSection(sections.gameScreen);
         submitSection.style.display = 'none';
         roundResults.style.display = 'block';
         nextRoundBtn.style.display = isHost ? 'inline-block' : 'none';
         generateRoundResults(state);
+        // Display submitted number if already submitted
+        displaySubmittedNumber(players);
       } else if (gameState === "gameOver") {
         showSection(sections.gameOverSection);
         winnerName.textContent = winner || 'No one';
@@ -446,7 +479,10 @@
 
       if (socket) {
         socket.send(JSON.stringify({ type: "number", number: num }));
-        submitSection.style.display = 'none';
+        // Hide submit button and display submitted number
+        submitNumberBtn.style.display = 'none';
+        submittedNumberDisplay.style.display = 'block';
+        displayedNumberSpan.textContent = num;
       }
     });
 
@@ -509,6 +545,22 @@
 
       resultsText.innerHTML = message || 'No changes this round.';
     }
+
+    // Display Submitted Number
+    function displaySubmittedNumber(players) {
+      for (const pid in players) {
+        const pl = players[pid];
+        if (pl.name === currentPlayerName && pl.hasPlayed && pl.lives > 0) {
+          submittedNumberDisplay.style.display = 'block';
+          displayedNumberSpan.textContent = pl.number;
+          submitNumberBtn.style.display = 'none';
+          break;
+        }
+      }
+    }
+
+    // Initialize by showing the landing page
+    showSection(sections.landingPage);
   </script>
 </body>
 </html>

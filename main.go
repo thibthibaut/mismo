@@ -363,7 +363,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	// Serve static files from the "static" directory.
-	fs := http.FileServer(http.Dir("./static"))
+	fs := http.FileServer(http.Dir("./build"))
 	http.Handle("/", fs)
 
 	// API Endpoints
